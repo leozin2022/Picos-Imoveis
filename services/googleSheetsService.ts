@@ -7,15 +7,17 @@ const getFreshUrl = (url: string) => {
 };
 
 /**
- * Detecta se o conteúdo retornado é uma página de login ou erro do Google
+ * Detecta se o conteúdo retornado é uma página de erro ou login do Google
  */
 function isGoogleError(text: string): boolean {
+  if (!text) return true;
   const t = text.trim().toLowerCase();
   return t.includes('<!doctype html') || 
          t.includes('<html') || 
          t.includes('google-signin') || 
          t.includes('login') ||
-         t.includes('service_login');
+         t.includes('service_login') ||
+         t.includes('accounts.google.com');
 }
 
 function parseCSV(csv: string): string[][] {
@@ -56,7 +58,7 @@ export async function fetchConfigFromSheets(url: string): Promise<Record<string,
     });
     return config;
   } catch (error) {
-    console.error('Config Error:', error);
+    console.warn('Config fetch failed, using defaults');
     return {};
   }
 }
@@ -64,6 +66,8 @@ export async function fetchConfigFromSheets(url: string): Promise<Record<string,
 export async function fetchPropertiesFromSheets(url: string): Promise<Property[]> {
   try {
     const response = await fetch(getFreshUrl(url));
+    if (!response.ok) throw new Error("HTTP_ERROR_" + response.status);
+    
     const csvData = await response.text();
     const rows = parseCSV(csvData);
     
@@ -80,10 +84,11 @@ export async function fetchPropertiesFromSheets(url: string): Promise<Property[]
       createdAt: new Date().toISOString()
     })).filter(p => p.title !== 'Sem título');
   } catch (error: any) {
+    console.error("Fetch Properties Error:", error);
     if (error.message === "PLANILHA_PRIVADA") {
-      throw new Error("A planilha não está pública. Vá em Arquivo > Publicar na Web e selecione CSV.");
+      throw new Error("A planilha não está pública. No Google Sheets, vá em: Arquivo > Compartilhar > Publicar na Web. Escolha 'Valores separados por vírgula (.csv)' e clique em Publicar.");
     }
-    throw error;
+    throw new Error("Não foi possível carregar os dados. Verifique sua conexão ou se os links da planilha em constants.ts estão corretos.");
   }
 }
 
