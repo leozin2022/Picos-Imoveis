@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [sponsors, setSponsors] = useState<Sponsor[]>([]);
   const [siteConfig, setSiteConfig] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<Neighborhood | 'Todos'>('Todos');
   const [selectedType, setSelectedType] = useState<'Todos' | 'Venda' | 'Aluga'>('Todos');
@@ -20,20 +21,26 @@ const App: React.FC = () => {
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Função centralizada de carregamento para facilitar re-fetch se necessário
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [propsData, sponsorsData, configData] = await Promise.all([
         fetchPropertiesFromSheets(GOOGLE_SHEETS_PROPERTIES_URL),
         fetchSponsorsFromSheets(GOOGLE_SHEETS_SPONSORS_URL),
         fetchConfigFromSheets(GOOGLE_SHEETS_CONFIG_URL)
       ]);
-      setProperties(propsData);
-      setSponsors(sponsorsData);
-      setSiteConfig(configData);
+      
+      setProperties(propsData || []);
+      setSponsors(sponsorsData || []);
+      setSiteConfig(configData || {});
+      
+      if (!propsData || propsData.length === 0) {
+        console.warn("Nenhum imóvel carregado da planilha.");
+      }
     } catch (err) {
-      console.error("Erro ao sincronizar dados:", err);
+      console.error("Erro fatal ao sincronizar dados:", err);
+      setError("Não foi possível carregar os dados. Verifique se a planilha está publicada como CSV.");
     } finally {
       setLoading(false);
     }
@@ -50,7 +57,8 @@ const App: React.FC = () => {
   const filteredProperties = useMemo(() => {
     return properties.filter(p => {
       const matchesNeighborhood = selectedNeighborhood === 'Todos' || p.neighborhood === selectedNeighborhood;
-      const matchesType = selectedType === 'Todos' || p.type?.toLowerCase().includes(selectedType.toLowerCase());
+      const matchesType = selectedType === 'Todos' || 
+                         (p.type && p.type.toLowerCase().includes(selectedType.toLowerCase()));
       const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
                            p.neighborhood.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            p.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -77,7 +85,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
-      {/* Navbar */}
       <header className="sticky top-0 z-40 bg-blue-700 border-b border-blue-800 shadow-xl text-white">
         <div className="max-w-7xl mx-auto px-4 h-20 md:h-24 flex items-center justify-between">
           <div onClick={() => scrollToSection('topo')} className="cursor-pointer">
@@ -110,7 +117,6 @@ const App: React.FC = () => {
           </button>
         </div>
 
-        {/* Mobile Menu */}
         {isMenuOpen && (
           <div className="md:hidden bg-blue-800 p-4 absolute top-20 left-0 w-full shadow-2xl animate-in slide-in-from-top duration-300">
             <div className="flex flex-col gap-4 font-bold text-sm">
@@ -129,7 +135,6 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-grow">
-        {/* Hero */}
         <section id="topo" className="bg-gradient-to-br from-blue-50 to-white py-16 px-4">
           <div className="max-w-6xl mx-auto text-center">
             <h2 className="text-4xl md:text-6xl font-black text-slate-900 mb-6 leading-tight">
@@ -188,7 +193,6 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        {/* Featured */}
         {featuredProperties.length > 0 && (
           <section id="destaques" className="py-20 px-4 bg-white scroll-mt-24">
             <div className="max-w-7xl mx-auto">
@@ -205,42 +209,20 @@ const App: React.FC = () => {
           </section>
         )}
 
-        {/* Listing */}
         <section id="imoveis" className="py-20 px-4 bg-slate-50 scroll-mt-24 border-t border-slate-100">
           <div className="max-w-7xl mx-auto">
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
               <div>
                 <h3 className="text-3xl font-black text-slate-900">Vitrine de Imóveis</h3>
                 <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2">
-                  Exibindo {filteredProperties.length} imóveis encontrados
+                  {loading ? 'Sincronizando...' : `Exibindo ${filteredProperties.length} imóveis encontrados`}
                 </p>
               </div>
               
               <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar">
-                <button 
-                  onClick={() => setSelectedType('Todos')}
-                  className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${
-                    selectedType === 'Todos' ? 'bg-blue-700 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  Tudo
-                </button>
-                <button 
-                  onClick={() => setSelectedType('Venda')}
-                  className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${
-                    selectedType === 'Venda' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  Venda
-                </button>
-                <button 
-                  onClick={() => setSelectedType('Aluga')}
-                  className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${
-                    selectedType === 'Aluga' ? 'bg-orange-500 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'
-                  }`}
-                >
-                  Aluguel
-                </button>
+                <button onClick={() => setSelectedType('Todos')} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${selectedType === 'Todos' ? 'bg-blue-700 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}>Tudo</button>
+                <button onClick={() => setSelectedType('Venda')} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${selectedType === 'Venda' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}>Venda</button>
+                <button onClick={() => setSelectedType('Aluga')} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex-shrink-0 ${selectedType === 'Aluga' ? 'bg-orange-500 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200'}`}>Aluguel</button>
               </div>
             </div>
             
@@ -248,6 +230,11 @@ const App: React.FC = () => {
               <div className="flex flex-col items-center justify-center py-24 gap-4">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-700"></div>
                 <p className="text-slate-400 font-bold text-sm uppercase tracking-widest">Sincronizando com a Planilha...</p>
+              </div>
+            ) : error ? (
+              <div className="text-center py-20 bg-red-50 rounded-[40px] border border-red-100 p-8">
+                <p className="text-red-600 font-bold mb-4">{error}</p>
+                <button onClick={loadData} className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold uppercase text-xs">Tentar novamente</button>
               </div>
             ) : filteredProperties.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -272,7 +259,6 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        {/* Patrocinadores Section */}
         {sponsors.length > 0 && (
           <section className="py-24 bg-slate-100/80 border-y border-slate-200 overflow-hidden">
             <div className="max-w-7xl mx-auto px-4 mb-16 text-center">
