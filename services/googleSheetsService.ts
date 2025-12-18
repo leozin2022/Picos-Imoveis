@@ -3,25 +3,22 @@ import { Property, Sponsor } from '../types';
 
 const getFreshUrl = (url: string) => {
   const connector = url.includes('?') ? '&' : '?';
+  // Adiciona um timestamp para evitar que o navegador use uma versão antiga (cache) da planilha
   return `${url}${connector}t=${new Date().getTime()}`;
 };
 
-/**
- * Detecta se o conteúdo retornado é uma página de erro ou login do Google
- */
 function isGoogleError(text: string): boolean {
-  if (!text) return true;
+  if (!text || text.length < 20) return false;
   const t = text.trim().toLowerCase();
   return t.includes('<!doctype html') || 
          t.includes('<html') || 
          t.includes('google-signin') || 
-         t.includes('login') ||
-         t.includes('service_login') ||
-         t.includes('accounts.google.com');
+         t.includes('accounts.google.com') ||
+         t.includes('login');
 }
 
 function parseCSV(csv: string): string[][] {
-  if (!csv || isGoogleError(csv)) {
+  if (isGoogleError(csv)) {
     throw new Error("PLANILHA_PRIVADA");
   }
   
@@ -54,11 +51,11 @@ export async function fetchConfigFromSheets(url: string): Promise<Record<string,
     const rows = parseCSV(csvData);
     const config: Record<string, string> = {};
     rows.slice(1).forEach(row => {
-      if (row && row[0] && row[1]) config[row[0]] = row[1];
+      if (row && row[0]) config[row[0]] = row[1] || '';
     });
     return config;
   } catch (error) {
-    console.warn('Config fetch failed, using defaults');
+    console.warn('Config fetch error:', error);
     return {};
   }
 }
@@ -66,29 +63,29 @@ export async function fetchConfigFromSheets(url: string): Promise<Record<string,
 export async function fetchPropertiesFromSheets(url: string): Promise<Property[]> {
   try {
     const response = await fetch(getFreshUrl(url));
-    if (!response.ok) throw new Error("HTTP_ERROR_" + response.status);
-    
     const csvData = await response.text();
     const rows = parseCSV(csvData);
     
-    return rows.slice(1).map((row, index) => ({
-      id: `prop-${index}-${new Date().getTime()}`,
-      title: row[0] || 'Sem título',
-      description: row[1] || 'Sem descrição',
-      price: row[2] || 'Sob consulta',
-      neighborhood: row[3] || 'Centro',
-      whatsappLink: row[4] || '#',
-      photos: [row[5], row[6], row[7], row[8], row[9]].filter(p => !!p && p !== ''),
-      isFeatured: String(row[10]).toLowerCase() === 'sim',
-      type: row[11] || 'Venda',
-      createdAt: new Date().toISOString()
-    })).filter(p => p.title !== 'Sem título');
+    if (rows.length <= 1) return [];
+
+    return rows.slice(1)
+      .filter(row => row.length >= 1 && row[0] !== '')
+      .map((row, index) => ({
+        id: `prop-${index}-${new Date().getTime()}`,
+        title: row[0] || 'Sem título',
+        description: row[1] || 'Sem descrição',
+        price: row[2] || 'Sob consulta',
+        neighborhood: row[3] || 'Centro',
+        whatsappLink: row[4] || '#',
+        photos: [row[5], row[6], row[7], row[8], row[9]].filter(p => !!p && p.startsWith('http')),
+        isFeatured: String(row[10]).toLowerCase().includes('sim'),
+        type: row[11] || 'Venda',
+        createdAt: new Date().toISOString()
+      }));
   } catch (error: any) {
-    console.error("Fetch Properties Error:", error);
-    if (error.message === "PLANILHA_PRIVADA") {
-      throw new Error("A planilha não está pública. No Google Sheets, vá em: Arquivo > Compartilhar > Publicar na Web. Escolha 'Valores separados por vírgula (.csv)' e clique em Publicar.");
-    }
-    throw new Error("Não foi possível carregar os dados. Verifique sua conexão ou se os links da planilha em constants.ts estão corretos.");
+    console.error("Erro ao buscar imóveis:", error);
+    if (error.message === "PLANILHA_PRIVADA") throw new Error("PLANILHA_PRIVADA");
+    throw new Error("Falha na conexão com a aba Imóveis.");
   }
 }
 
@@ -97,12 +94,17 @@ export async function fetchSponsorsFromSheets(url: string): Promise<Sponsor[]> {
     const response = await fetch(getFreshUrl(url));
     const csvData = await response.text();
     const rows = parseCSV(csvData);
-    return rows.slice(1).map((row, index) => ({
-      id: `sponsor-${index}`,
-      name: row[0] || 'Parceiro',
-      logoUrl: row[1] || ''
-    })).filter(s => !!s.logoUrl);
-  } catch {
+    
+    // Filtra linhas onde a segunda coluna (índice 1) parece ser uma URL de imagem
+    return rows.slice(1)
+      .filter(row => row[1] && (row[1].startsWith('http') || row[1].startsWith('data:image')))
+      .map((row, index) => ({
+        id: `sponsor-${index}-${new Date().getTime()}`,
+        name: row[0] || 'Parceiro',
+        logoUrl: row[1] || ''
+      }));
+  } catch (err) {
+    console.error("Erro ao buscar parceiros:", err);
     return [];
   }
 }
