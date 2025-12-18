@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Picos Imóveis</title>
+    <!-- Favicon para evitar 404 -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏠</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -12,29 +14,48 @@
             font-family: 'Inter', sans-serif;
             scroll-behavior: smooth;
         }
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
+        /* Estilo para evitar flash de tela branca */
+        #root:empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #f8fafc;
         }
-        .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f1f1;
+        #root:empty::after {
+            content: "Carregando Picos Imóveis...";
+            font-weight: 800;
+            color: #1d4ed8;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-size: 12px;
+            animation: pulse 1.5s infinite;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #059669;
-            border-radius: 10px;
-        }
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
         
-        /* Animação para Patrocinadores */
+        /* Animação de Scroll Infinito */
         @keyframes scroll {
             0% { transform: translateX(0); }
             100% { transform: translateX(calc(-250px * 5)); }
         }
+
         .animate-scroll {
             animation: scroll 30s linear infinite;
             display: flex;
-            width: calc(250px * 10);
+            width: max-content;
         }
+
         .animate-scroll:hover {
             animation-play-state: paused;
+        }
+
+        /* Esconder scrollbar mas manter funcionalidade */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
     </style>
 <script type="importmap">

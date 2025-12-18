@@ -1,25 +1,27 @@
 
 import { Property, Sponsor } from '../types';
 
-/**
- * Função para limpar cache e garantir dados novos da planilha
- */
 const getFreshUrl = (url: string) => {
   const connector = url.includes('?') ? '&' : '?';
   return `${url}${connector}t=${new Date().getTime()}`;
 };
 
 /**
- * Verifica se o conteúdo parece ser HTML (erro de permissão do Google) 
- * em vez de um CSV válido.
+ * Detecta se o conteúdo retornado é uma página de login ou erro do Google
  */
-function isHtml(text: string): boolean {
-  return text.trim().toLowerCase().startsWith('<!doctype html') || 
-         text.trim().toLowerCase().startsWith('<html');
+function isGoogleError(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return t.includes('<!doctype html') || 
+         t.includes('<html') || 
+         t.includes('google-signin') || 
+         t.includes('login') ||
+         t.includes('service_login');
 }
 
 function parseCSV(csv: string): string[][] {
-  if (!csv || isHtml(csv)) return [];
+  if (!csv || isGoogleError(csv)) {
+    throw new Error("PLANILHA_PRIVADA");
+  }
   
   const lines = csv.split(/\r?\n/);
   return lines
@@ -44,10 +46,8 @@ function parseCSV(csv: string): string[][] {
 }
 
 export async function fetchConfigFromSheets(url: string): Promise<Record<string, string>> {
-  if (!url) return {};
   try {
     const response = await fetch(getFreshUrl(url));
-    if (!response.ok) return {};
     const csvData = await response.text();
     const rows = parseCSV(csvData);
     const config: Record<string, string> = {};
@@ -56,76 +56,48 @@ export async function fetchConfigFromSheets(url: string): Promise<Record<string,
     });
     return config;
   } catch (error) {
-    console.error('Error fetching config:', error);
+    console.error('Config Error:', error);
     return {};
   }
 }
 
 export async function fetchPropertiesFromSheets(url: string): Promise<Property[]> {
-  if (!url) return [];
-
   try {
     const response = await fetch(getFreshUrl(url));
-    if (!response.ok) throw new Error('Falha na resposta do servidor');
     const csvData = await response.text();
     const rows = parseCSV(csvData);
     
-    if (rows.length <= 1) return []; // Apenas cabeçalho ou vazio
-
-    return rows.slice(1).map((row, index) => {
-      // Garantir que a linha tenha colunas suficientes para não quebrar
-      const title = row[0] || '';
-      const description = row[1] || '';
-      const price = row[2] || 'Sob consulta';
-      const neighborhood = row[3] || 'Centro';
-      const whatsappLink = row[4] || '#';
-      const p1 = row[5] || '';
-      const p2 = row[6] || '';
-      const p3 = row[7] || '';
-      const p4 = row[8] || '';
-      const p5 = row[9] || '';
-      const isFeatured = row[10] || 'não';
-      const type = row[11] || 'Venda';
-
-      return {
-        id: `prop-${index}-${new Date().getTime()}`,
-        title: title || 'Sem título',
-        description: description || 'Sem descrição',
-        price: price,
-        neighborhood: neighborhood,
-        whatsappLink: whatsappLink,
-        photos: [p1, p2, p3, p4, p5].filter(p => !!p && p !== ''),
-        isFeatured: isFeatured.toLowerCase() === 'sim' || isFeatured.toLowerCase() === 'true',
-        type: type,
-        createdAt: new Date().toISOString()
-      };
-    }).filter(p => p.title !== 'Sem título'); // Remove linhas fantasmas vazias
-  } catch (error) {
-    console.error('Error fetching properties:', error);
-    return [];
+    return rows.slice(1).map((row, index) => ({
+      id: `prop-${index}-${new Date().getTime()}`,
+      title: row[0] || 'Sem título',
+      description: row[1] || 'Sem descrição',
+      price: row[2] || 'Sob consulta',
+      neighborhood: row[3] || 'Centro',
+      whatsappLink: row[4] || '#',
+      photos: [row[5], row[6], row[7], row[8], row[9]].filter(p => !!p && p !== ''),
+      isFeatured: String(row[10]).toLowerCase() === 'sim',
+      type: row[11] || 'Venda',
+      createdAt: new Date().toISOString()
+    })).filter(p => p.title !== 'Sem título');
+  } catch (error: any) {
+    if (error.message === "PLANILHA_PRIVADA") {
+      throw new Error("A planilha não está pública. Vá em Arquivo > Publicar na Web e selecione CSV.");
+    }
+    throw error;
   }
 }
 
 export async function fetchSponsorsFromSheets(url: string): Promise<Sponsor[]> {
-  if (!url) return [];
-
   try {
     const response = await fetch(getFreshUrl(url));
-    if (!response.ok) return [];
     const csvData = await response.text();
     const rows = parseCSV(csvData);
-    
-    return rows.slice(1).map((row, index) => {
-      const name = row[0] || 'Patrocinador';
-      const logoUrl = row[1] || '';
-      return {
-        id: `sponsor-${index}`,
-        name,
-        logoUrl
-      };
-    }).filter(s => s.logoUrl !== '');
-  } catch (error) {
-    console.error('Error fetching sponsors:', error);
+    return rows.slice(1).map((row, index) => ({
+      id: `sponsor-${index}`,
+      name: row[0] || 'Parceiro',
+      logoUrl: row[1] || ''
+    })).filter(s => !!s.logoUrl);
+  } catch {
     return [];
   }
 }
